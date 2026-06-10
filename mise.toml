@@ -1,0 +1,13 @@
+#:schema https://mise.jdx.dec/schema/mise.json
+
+[tools]
+sd = "latest"
+fd = "latest"
+dust = "latest"
+fzf = "latest"
+eza = "latest"
+ripgrep = "latest"
+
+[env]
+
+[tasks."setup"]

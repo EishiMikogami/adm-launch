@@ -1,0 +1,61 @@
+### シェルスクリプト特有 (Shell Specific)
+# 実行時に生成されるログファイル
+*.log
+# 一時ファイル
+*.tmp
+*.temp
+*.swp
+
+### 実行・デバッグ (Execution & Debugging)
+# デバッグ出力用のディレクトリなど（プロジェクトで決める場合）
+/debug/
+/out/
+/dist/
+
+### 環境変数・秘匿情報 (Environment & Secrets)
+# 鍵やパスワードが含まれるファイル
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+### OS固有のファイル (OS Specific)
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+### エディタ・ツール (Editor & Tools)
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Vim
+.*.sw[a-z]
+*.un~
+Session.vim
+
+### パッケージ管理・仮想環境 (Optional)
+# もしツール（ShellCheckなど）の構成ファイルを除外する場合
+.shellcheckrc
+
+### mise (Runtime Manager)
+# ローカル固有の設定（プロジェクト共有したくない場合に使用）
+.mise.local.toml
+mise.local.toml
+
+# 古い名称（rtx）を使用している場合
+.rtx.local.toml
+rtx.local.toml
+
+# miseが生成する一時ファイルやツール固有のキャッシュ
+/.mise/
+/.rtx/
