@@ -7,9 +7,11 @@
 
 # --- 設定 ---
 ENC_DB=~/.config/.admin/"password.enc"
-SALT="YourSpecificStaticSalt123" # 適宜変更してください
-LOG_FILE=~/.config/.admin/"usr_access.log"
-CONFIG_FILE_ADMIN=~/.config/.admin/".adm_launcher_config.txt"
+SALT="340f0e46c08d3dc857e8fa8c0f5343ba"
+LOG_FILE=~/.config/.admin/".usr_access.log"
+CONFIG_FILE_LAUNCH_ADMIN=~/.config/.admin/".adm_launcher_config.txt"
+
+# ランチャー最大登録数・バックアップパス最大登録数の設定
 LIMIT=25
 
 # --- [新規追加] クリーンアップ関数と trap の設定 ---
@@ -79,10 +81,10 @@ function authenticate_admin() {
   input_hash=$(echo -n "${user_pass}${SALT}" | openssl dgst -sha256 -r | awk '{print $1}')
 
   # --- デバッグ用の一時挿入 ---
-  echo "--- DEBUG ---"
-  printf "Stored Hash (HEX): %s\n" "$(echo -n "$stored_hash" | xxd -p)"
-  printf "Input  Hash (HEX): %s\n" "$(echo -n "$input_hash" | xxd -p)"
-  echo "--------------"
+  # echo "--- DEBUG ---"
+  # printf "Stored Hash (HEX): %s\n" "$(echo -n "$stored_hash" | xxd -p)"
+  # printf "Input  Hash (HEX): %s\n" "$(echo -n "$input_hash" | xxd -p)"
+  # echo "--------------"
 
   if [[ "$input_hash" != "$stored_hash" ]]; then
     echo "Error: Authentication failed." >&2
@@ -130,8 +132,7 @@ _cleanup_on_exit
 echo "中核処理実行へ移行します"
 
 # 設定ファイルがなければ作成
-touch "$CONFIG_FILE_ADMIN
-"
+touch "$CONFIG_FILE_LAUNCH_ADMIN"
 
 # --- 関数: リストの読み込み ---
 load_config() {
@@ -141,17 +142,14 @@ load_config() {
     [[ -z "$title" ]] && continue
     titles+=("$title")
     paths+=("$path")
-  done <"$CONFIG_FILE_ADMIN
-"
+  done <"$CONFIG_FILE_LAUNCH_ADMIN"
 }
 
 # --- 関数: ファイルへの保存 ---
 save_config() {
-  >"$CONFIG_FILE_ADMIN
-  "
+  >"$CONFIG_FILE_LAUNCH_ADMIN"
   for i in "${!titles[@]}"; do
-    echo "${titles[$i]},${paths[$i]}" >>"$CONFIG_FILE_ADMIN
-    "
+    echo "${titles[$i]},${paths[$i]}" >>"$CONFIG_FILE_LAUNCH_ADMIN"
   done
 }
 
