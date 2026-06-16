@@ -92,7 +92,15 @@ function authenticate_admin() {
     return 1
   fi
 
-  # 4. 2要素認証 (TOTP) - オプション
+  # 4. 2要素認証 (TOTP) - oathtool導入確認
+
+  if [[ -n "$totp_secret" ]] && ! command -v oathtool &>/dev/null; then
+    echo "Error: totp_secret が設定されていますが、oathtool がインストールされていません。" >&2
+    _log_event "FAILURE" "Not Installed oathtool"
+    return 1
+  fi
+
+  # 4. 3要素認証 (TOTP) - オプション
   if command -v oathtool &>/dev/null && [[ -n "$totp_secret" ]]; then
     read -p "Enter OTP: " input_otp
     correct_otp=$(oathtool --totp -b "$totp_secret")
