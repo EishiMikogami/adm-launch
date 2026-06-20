@@ -1,3 +1,6 @@
+```bash
+
+
 # 認証モジュール (function authenticate_admin)
 # 1. AES256復号 (OpenSSL)
 # 2. SHA256ハッシュ照合 (Salt付き)
@@ -6,19 +9,18 @@
 # ==============================================================================
 
 # --- 設定 ---
-ENC_DB=~/.config/.admin/".password.enc"
-SALT="340f0e46c08d3dc857e8fa8c0f5343ba"
-LOG_FILE=~/.config/.admin/".usr_access.log"
-CONFIG_FILE_LAUNCH_ADMIN=~/.config/.admin/".adm_launcher_config.txt"
-
+ENC_DB=~/".passcode.enc"
+SALT="SaltSpecificValueCode"
+LOG_FILE=~/".usr_access.log"
 CONFIG_FILE_LAUNCH_ADMIN=~/".adm_launcher_config.txt"
 
 # ランチャー最大登録数・バックアップパス最大登録数の設定
 LIMIT=50
 
-# --- クリーンアップ関数と trap の設定 ---
+# --- [新規追加] クリーンアップ関数と trap の設定 ---
+# スクリプト終了時（正常・異常問わず）に必ず実行される後始末処理
 function _cleanup_on_exit() {
-  # メモリ上の機密変数を完全に上書きして破棄
+  # 1. メモリ上の機密変数を完全に上書きして破棄
   master_key="00000000000000000000"
   user_pass="00000000000000000000"
   decrypted_data="00000000000000000000"
@@ -29,7 +31,7 @@ function _cleanup_on_exit() {
   unset master_key user_pass decrypted_data totp_secret input_otp correct_otp
 }
 
-# EXIT, SIGINT, SIGTERM を捕捉
+# EXIT (通常終了), SIGINT (Ctrl+C), SIGTERM (強制終了の要求) を捕捉
 trap _cleanup_on_exit EXIT SIGINT SIGTERM
 
 # --- 関数: セキュア抹消 ---
@@ -42,18 +44,20 @@ function _secure_cleanup() {
   else
     local size
     size=$(wc -c <"$target" | tr -d ' ')
-    [ "$size" -gt 0 ] && dd if=/=/urandom of="$target" bs=1 count="$size" conv=notrunc &>/dev/null
+    [ "$size" -gt 0 ] && dd if=/dev/urandom of="$target" bs=1 count="$size" conv=notrunc &>/dev/null
     rm -f "$target"
   fi
 }
 
 # --- 関数: ユーザー認証 ---
 function authenticate_admin() {
+  # 1. 必要ツールの確認
   if ! command -v openssl &>/dev/null; then
     echo "Error: openssl is required." >&2
     return 1
   fi
 
+  # 2. マスターキー入力と復号 (オンメモリ)
   read -sp "Enter Master Key: " master_key
   echo
 
@@ -68,12 +72,22 @@ function authenticate_admin() {
   stored_hash=$(echo "$decrypted_data" | cut -d',' -f1)
   totp_secret=$(echo "$decrypted_data" | cut -d',' -f2)
 
+  # 元データはここで一旦上書きしてから消去（よりセキュアに）
   decrypted_data="0000000000"
   unset decrypted_data
 
+  # 3. 本人認証パスワードの照合
   read -sp "Enter Admin Password: " user_pass
   echo
+  # input_hash=$(echo -n "${user_pass}${SALT}" | openssl dgst -sha256 | awk '{print $2}')
+  # openssl dgst -sha256 -r を使うと、常に「ハッシュ値 [スペース] *stdin」の形式になるため、確実に1番目を抜き出せます
   input_hash=$(echo -n "${user_pass}${SALT}" | openssl dgst -sha256 -r | awk '{print $1}')
+
+  # --- デバッグ用の一時挿入 ---
+  # echo "--- DEBUG ---"
+  # printf "Stored Hash (HEX): %s\n" "$(echo -n "$stored_hash" | xxd -p)"
+  # printf "Input  Hash (HEX): %s\n" "$(echo -n "$input_hash" | xxd -p)"
+  # echo "--------------"
 
   if [[ "$input_hash" != "$stored_hash" ]]; then
     echo "Error: Authentication failed." >&2
@@ -81,12 +95,15 @@ function authenticate_admin() {
     return 1
   fi
 
+  # 4. 2要素認証 (TOTP) - oathtool導入確認
+
   if [[ -n "$totp_secret" ]] && ! command -v oathtool &>/dev/null; then
     echo "Error: totp_secret が設定されていますが、oathtool がインストールされていません。" >&2
     _log_event "FAILURE" "Not Installed oathtool"
     return 1
   fi
 
+  # 4. 3要素認証 (TOTP) - オプション
   if command -v oathtool &>/dev/null && [[ -n "$totp_secret" ]]; then
     read -p "Enter OTP: " input_otp
     correct_otp=$(oathtool --totp -b "$totp_secret")
@@ -98,12 +115,13 @@ function authenticate_admin() {
     fi
   fi
 
+  # 5. 後始末
   _log_event "SUCCESS" "Authentication successful"
   echo "Authentication Success."
   return 0
 }
 
-# ログ記録用関数（登録名や実行コマンド情報を追記できるよう拡張可能）
+# ログ記録用関数
 function _log_event() {
   local status="$1"
   local message="$2"
@@ -116,39 +134,33 @@ function _log_event() {
   printf "[%s] [%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$status" "$message" >>"$LOG_FILE"
 }
 
-# --- 認証実行 ---
+# 実行
 authenticate_admin || exit 1
+
+# 認証成功後、これ以降の処理で不要ならここで明示的に破棄しても良い
 _cleanup_on_exit
 
 echo "中核処理実行へ移行します"
-sleep 1
 
-# 設定ファイル初期化
+# 設定ファイルがなければ作成
 touch "$CONFIG_FILE_LAUNCH_ADMIN"
 
-# --- 関数: リストの読み込み（虫食いインデックス防止の再インデックス化） ---
+# --- 関数: リストの読み込み ---
 load_config() {
-  local raw_titles=()
-  local raw_targets=()
-
-  # ファイルから一時的に読み込み
-  while IFS=',' read -r title target; do
+  titles=()
+  paths=()
+  while IFS=',' read -r title path; do
     [[ -z "$title" ]] && continue
-    raw_titles+=("$title")
-    raw_targets+=("$target")
+    titles+=("$title")
+    paths+=("$path")
   done <"$CONFIG_FILE_LAUNCH_ADMIN"
-
-  # グローバル配列を綺麗に詰め直して再代入（RASIS: 信頼性・保守性の向上）
-  titles=("${raw_titles[@]}")
-  targets=("${raw_targets[@]}")
 }
 
 # --- 関数: ファイルへの保存 ---
 save_config() {
   >"$CONFIG_FILE_LAUNCH_ADMIN"
   for i in "${!titles[@]}"; do
-    # 既にヘッダが付与されているため、そのまま保存
-    echo "${titles[$i]},${targets[$i]}" >>"$CONFIG_FILE_LAUNCH_ADMIN"
+    echo "${titles[$i]},${paths[$i]}" >>"$CONFIG_FILE_LAUNCH_ADMIN"
   done
 }
 
@@ -157,24 +169,14 @@ while true; do
   load_config
   clear
   echo "=================================="
-  echo "    管理者仕様 Multi Launcher (Total: ${#titles[@]}/$LIMIT)"
+  echo "   管理者仕様 Script Launcher (Total: ${#titles[@]}/$LIMIT)"
   echo "=================================="
 
   if [ ${#titles[@]} -eq 0 ]; then
-    echo " (登録されている項目はありません)"
+    echo " (登録されているスクリプトはありません)"
   else
     for i in "${!titles[@]}"; do
-      local item_target="${targets[$i]}"
-      local display_type="[UNKNOWN]"
-
-      # 表示用に接頭辞を判定
-      if [[ "$item_target" =~ ^shell: ]]; then
-        display_type="[Shell]"
-      elif [[ "$item_target" =~ ^cmd: ]]; then
-        display_type="[Cmd]"
-      fi
-
-      printf "%2d) %-20s %-8s %s\n" $((i + 1)) "${titles[$i]}" "$display_type" "${item_target#*:}"
+      printf "%2d) %-20s [%s]\n" $((i + 1)) "${titles[$i]}" "${paths[$i]}"
     done
   fi
   echo "----------------------------------"
@@ -187,112 +189,49 @@ while true; do
     [0-9]*)
       idx=$((opt - 1))
       if [[ $idx -ge 0 && $idx -lt ${#titles[@]} ]]; then
-        full_target="${targets[$idx]}"
-        item_title="${titles[$idx]}"
-
-        # ヘッダと実体の分離
-        prefix="${full_target%%:*}"
-        body="${full_target#*:}"
-
-        if [[ -z "$body" ]]; then
-          echo "エラー: 実行内容が空です。"
+        script_path="${paths[$idx]}"
+        if [[ -f "$script_path" ]]; then
+          echo "--- 実行中: $script_path ---"
+          bash "$script_path"
+          echo "----------------------------"
+          echo "完了。Enterキーで戻ります。"
+          read -r
+        else
+          echo "エラー: ファイルが見つかりません。($script_path)"
           sleep 2
-          continue
         fi
-
-        case "$prefix" in
-          shell)
-            if [[ -f "$body" ]]; then
-              echo "--- [Shell] 実行中: $item_title ---"
-              _log_event "EXEC_SHELL" "Name: $item_title, Path: $body"
-              bash "$body"
-              echo "----------------------------"
-            else
-              echo "エラー: ファイルが見つかりません。($body)"
-              _log_event "EXEC_ERROR" "Shell file not found: $body"
-              sleep 2
-            fi
-            ;;
-          cmd)
-            echo "--- [Command] 実行中: $item_title ---"
-            _log_event "EXEC_CMD" "Name: $item_title, Cmd: $body"
-            # 安全のため、直でevalする前にコンテキストを明確化して実行
-            /usr/bin/env bash -c "$body"
-            echo "----------------------------"
-            ;;
-          *)
-            echo "エラー: 不明なフォーマットです。($prefix)"
-            sleep 2
-            ;;
-        esac
-        echo "完了。Enterキーで戻ります。"
-        read -r
       fi
       ;;
-
     a)
       if [ ${#titles[@]} -ge $LIMIT ]; then
         echo "制限数($LIMIT)に達しています。削除してから登録してください。"
         sleep 2
         continue
       fi
-
       echo -n "表示タイトルを入力: "
       read -r new_title
-      [[ -z "$new_title" ]] && continue
-
-      echo "登録種別を選択してください:"
-      echo "  1) シェルスクリプト (shell:)"
-      echo "  2) コマンド構文     (cmd:)"
-      echo -n "選択 (1-2): "
-      read -r type_opt
-
-      case "$type_opt" in
-        1)
-          echo -n "スクリプトのフルパスを入力: "
-          read -r new_path
-          titles+=("$new_title")
-          targets+=("shell:$new_path")
-          ;;
-        2)
-          echo -n "実行するコマンド構文を入力: "
-          read -r new_cmd
-          titles+=("$new_title")
-          targets+=("cmd:$new_cmd")
-          ;;
-        *)
-          echo "無効な選択です。登録をキャンセルします。"
-          sleep 1
-          continue
-          ;;
-      esac
+      echo -n "スクリプトのフルパスを入力: "
+      read -r new_path
+      titles+=("$new_title")
+      paths+=("$new_path")
       save_config
       ;;
-
     e)
       echo -n "編集する番号を選択: "
       read -r num
       idx=$((num - 1))
       if [[ $idx -ge 0 && $idx -lt ${#titles[@]} ]]; then
-        full_target="${targets[$idx]}"
-        prefix="${full_target%%:*}"
-        body="${full_target#*:}"
-
         echo "現在のタイトル: ${titles[$idx]}"
         echo -n "新しいタイトル (空欄で維持): "
         read -r edit_title
-
-        echo "現在の内容 ($prefix): $body"
-        echo -n "新しい内容 (空欄で維持): "
-        read -r edit_body
-
+        echo "現在のパス: ${paths[$idx]}"
+        echo -n "新しいパス (空欄で維持): "
+        read -r edit_path
         [[ -n "$edit_title" ]] && titles[$idx]="$edit_title"
-        [[ -n "$edit_body" ]] && targets[$idx]="${prefix}:${edit_body}"
-
+        [[ -n "$edit_path" ]] && paths[$idx]="$edit_path"
         save_config
       fi
       ;;
-
     s)
       echo -n "入れ替え元(No): "
       read -r n1
@@ -300,34 +239,38 @@ while true; do
       read -r n2
       i1=$((n1 - 1))
       i2=$((n2 - 1))
-      if [[ $i1 -ge 0 && $i1 -lt ${#titles[@]} && $i2 -ge 0 && $i2 -lt ${#titles[@]} ]]; then
+      if [[ $i1 -lt ${#titles[@]} && $i2 -lt ${#titles[@]} ]]; then
+        # 配列要素の入れ替え
         tmp_t="${titles[$i1]}"
         titles[$i1]="${titles[$i2]}"
         titles[$i2]="$tmp_t"
 
-        tmp_p="${targets[$i1]}"
-        targets[$i1]="${targets[$i2]}"
-        targets[$i2]="$tmp_p"
+        tmp_p="${paths[$i1]}"
+        paths[$i1]="${paths[$i2]}"
+        paths[$i2]="$tmp_p"
         save_config
       fi
       ;;
-
     d)
       echo -n "削除する番号を選択: "
       read -r num
       idx=$((num - 1))
       if [[ $idx -ge 0 && $idx -lt ${#titles[@]} ]]; then
         unset 'titles[idx]'
-        unset 'targets[idx]'
+        unset 'paths[idx]'
+        # 配列のインデックスを詰め直して保存
         save_config
-        echo "削除しました。"
-        sleep 1
       fi
       ;;
-
     q)
       echo "終了します。"
       exit 0
       ;;
   esac
 done
+
+```
+
+# このコードに改修を行いたいと考えます。 内容として,は現行のシェルスクリプトを登録する機能に加え、コマンド構文を登録する機能も実装する。　また、RASISの観点から通常のターミナルからコマンドを叩くときより、安全性を下げないもしくは、より高いものとする。 登録したものへヘッダを付加する（シェルスクリプトの場合は「shell:」,コマンドの場合は「cmd:」）。　実行ログとして、登録名を記録する。
+
+このような内容の改修に最適な、コードの提案をお願いしたいのですが、可能でしょうか？
