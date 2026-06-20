@@ -10,9 +10,6 @@ ENC_DB=~/.config/.admin/".password.enc"
 SALT="340f0e46c08d3dc857e8fa8c0f5343ba"
 LOG_FILE=~/.config/.admin/".usr_access.log"
 CONFIG_FILE_LAUNCH_ADMIN=~/.config/.admin/".adm_launcher_config.txt"
-
-CONFIG_FILE_LAUNCH_ADMIN=~/".adm_launcher_config.txt"
-
 # ランチャー最大登録数・バックアップパス最大登録数の設定
 LIMIT=50
 
