@@ -161,8 +161,8 @@ while true; do
     echo " (登録されている項目はありません)"
   else
     for i in "${!titles[@]}"; do
-      local item_target="${targets[$i]}"
-      local display_type="[UNKNOWN]"
+      item_target="${targets[$i]}"
+      display_type="[UNKNOWN]"
 
       # 表示用に接頭辞を判定
       if [[ "$item_target" =~ ^shell: ]]; then
