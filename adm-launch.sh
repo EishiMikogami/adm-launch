@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # 認証モジュール (function authenticate_admin)
 # 1. AES256復号 (OpenSSL)
 # 2. SHA256ハッシュ照合 (Salt付き)
@@ -181,150 +183,150 @@ while true; do
   read -r opt
 
   case "$opt" in
-    [0-9]*)
-      idx=$((opt - 1))
-      if [[ $idx -ge 0 && $idx -lt ${#titles[@]} ]]; then
-        full_target="${targets[$idx]}"
-        item_title="${titles[$idx]}"
+  [0-9]*)
+    idx=$((opt - 1))
+    if [[ $idx -ge 0 && $idx -lt ${#titles[@]} ]]; then
+      full_target="${targets[$idx]}"
+      item_title="${titles[$idx]}"
 
-        # ヘッダと実体の分離
-        prefix="${full_target%%:*}"
-        body="${full_target#*:}"
+      # ヘッダと実体の分離
+      prefix="${full_target%%:*}"
+      body="${full_target#*:}"
 
-        if [[ -z "$body" ]]; then
-          echo "エラー: 実行内容が空です。"
-          sleep 2
-          continue
-        fi
-
-        case "$prefix" in
-          shell)
-            if [[ -f "$body" ]]; then
-              echo "--- [Shell] 実行中: $item_title ---"
-              _log_event "EXEC_SHELL" "Name: $item_title, Path: $body"
-              bash "$body"
-              echo "----------------------------"
-            else
-              echo "エラー: ファイルが見つかりません。($body)"
-              _log_event "EXEC_ERROR" "Shell file not found: $body"
-              sleep 2
-            fi
-            ;;
-          cmd)
-            echo "--- [Command] 実行中: $item_title ---"
-            _log_event "EXEC_CMD" "Name: $item_title, Cmd: $body"
-            # 安全のため、直でevalする前にコンテキストを明確化して実行
-            /usr/bin/env bash -c "$body"
-            echo "----------------------------"
-            ;;
-          *)
-            echo "エラー: 不明なフォーマットです。($prefix)"
-            sleep 2
-            ;;
-        esac
-        echo "完了。Enterキーで戻ります。"
-        read -r
-      fi
-      ;;
-
-    a)
-      if [ ${#titles[@]} -ge $LIMIT ]; then
-        echo "制限数($LIMIT)に達しています。削除してから登録してください。"
+      if [[ -z "$body" ]]; then
+        echo "エラー: 実行内容が空です。"
         sleep 2
         continue
       fi
 
-      echo -n "表示タイトルを入力: "
-      read -r new_title
-      [[ -z "$new_title" ]] && continue
-
-      echo "登録種別を選択してください:"
-      echo "  1) シェルスクリプト (shell:)"
-      echo "  2) コマンド構文     (cmd:)"
-      echo -n "選択 (1-2): "
-      read -r type_opt
-
-      case "$type_opt" in
-        1)
-          echo -n "スクリプトのフルパスを入力: "
-          read -r new_path
-          titles+=("$new_title")
-          targets+=("shell:$new_path")
-          ;;
-        2)
-          echo -n "実行するコマンド構文を入力: "
-          read -r new_cmd
-          titles+=("$new_title")
-          targets+=("cmd:$new_cmd")
-          ;;
-        *)
-          echo "無効な選択です。登録をキャンセルします。"
-          sleep 1
-          continue
-          ;;
+      case "$prefix" in
+      shell)
+        if [[ -f "$body" ]]; then
+          echo "--- [Shell] 実行中: $item_title ---"
+          _log_event "EXEC_SHELL" "Name: $item_title, Path: $body"
+          bash "$body"
+          echo "----------------------------"
+        else
+          echo "エラー: ファイルが見つかりません。($body)"
+          _log_event "EXEC_ERROR" "Shell file not found: $body"
+          sleep 2
+        fi
+        ;;
+      cmd)
+        echo "--- [Command] 実行中: $item_title ---"
+        _log_event "EXEC_CMD" "Name: $item_title, Cmd: $body"
+        # 安全のため、直でevalする前にコンテキストを明確化して実行
+        /usr/bin/env bash -c "$body"
+        echo "----------------------------"
+        ;;
+      *)
+        echo "エラー: 不明なフォーマットです。($prefix)"
+        sleep 2
+        ;;
       esac
+      echo "完了。Enterキーで戻ります。"
+      read -r
+    fi
+    ;;
+
+  a)
+    if [ ${#titles[@]} -ge $LIMIT ]; then
+      echo "制限数($LIMIT)に達しています。削除してから登録してください。"
+      sleep 2
+      continue
+    fi
+
+    echo -n "表示タイトルを入力: "
+    read -r new_title
+    [[ -z "$new_title" ]] && continue
+
+    echo "登録種別を選択してください:"
+    echo "  1) シェルスクリプト (shell:)"
+    echo "  2) コマンド構文     (cmd:)"
+    echo -n "選択 (1-2): "
+    read -r type_opt
+
+    case "$type_opt" in
+    1)
+      echo -n "スクリプトのフルパスを入力: "
+      read -r new_path
+      titles+=("$new_title")
+      targets+=("shell:$new_path")
+      ;;
+    2)
+      echo -n "実行するコマンド構文を入力: "
+      read -r new_cmd
+      titles+=("$new_title")
+      targets+=("cmd:$new_cmd")
+      ;;
+    *)
+      echo "無効な選択です。登録をキャンセルします。"
+      sleep 1
+      continue
+      ;;
+    esac
+    save_config
+    ;;
+
+  e)
+    echo -n "編集する番号を選択: "
+    read -r num
+    idx=$((num - 1))
+    if [[ $idx -ge 0 && $idx -lt ${#titles[@]} ]]; then
+      full_target="${targets[$idx]}"
+      prefix="${full_target%%:*}"
+      body="${full_target#*:}"
+
+      echo "現在のタイトル: ${titles[$idx]}"
+      echo -n "新しいタイトル (空欄で維持): "
+      read -r edit_title
+
+      echo "現在の内容 ($prefix): $body"
+      echo -n "新しい内容 (空欄で維持): "
+      read -r edit_body
+
+      [[ -n "$edit_title" ]] && titles[$idx]="$edit_title"
+      [[ -n "$edit_body" ]] && targets[$idx]="${prefix}:${edit_body}"
+
       save_config
-      ;;
+    fi
+    ;;
 
-    e)
-      echo -n "編集する番号を選択: "
-      read -r num
-      idx=$((num - 1))
-      if [[ $idx -ge 0 && $idx -lt ${#titles[@]} ]]; then
-        full_target="${targets[$idx]}"
-        prefix="${full_target%%:*}"
-        body="${full_target#*:}"
+  s)
+    echo -n "入れ替え元(No): "
+    read -r n1
+    echo -n "入れ替え先(No): "
+    read -r n2
+    i1=$((n1 - 1))
+    i2=$((n2 - 1))
+    if [[ $i1 -ge 0 && $i1 -lt ${#titles[@]} && $i2 -ge 0 && $i2 -lt ${#titles[@]} ]]; then
+      tmp_t="${titles[$i1]}"
+      titles[$i1]="${titles[$i2]}"
+      titles[$i2]="$tmp_t"
 
-        echo "現在のタイトル: ${titles[$idx]}"
-        echo -n "新しいタイトル (空欄で維持): "
-        read -r edit_title
+      tmp_p="${targets[$i1]}"
+      targets[$i1]="${targets[$i2]}"
+      targets[$i2]="$tmp_p"
+      save_config
+    fi
+    ;;
 
-        echo "現在の内容 ($prefix): $body"
-        echo -n "新しい内容 (空欄で維持): "
-        read -r edit_body
+  d)
+    echo -n "削除する番号を選択: "
+    read -r num
+    idx=$((num - 1))
+    if [[ $idx -ge 0 && $idx -lt ${#titles[@]} ]]; then
+      unset 'titles[idx]'
+      unset 'targets[idx]'
+      save_config
+      echo "削除しました。"
+      sleep 1
+    fi
+    ;;
 
-        [[ -n "$edit_title" ]] && titles[$idx]="$edit_title"
-        [[ -n "$edit_body" ]] && targets[$idx]="${prefix}:${edit_body}"
-
-        save_config
-      fi
-      ;;
-
-    s)
-      echo -n "入れ替え元(No): "
-      read -r n1
-      echo -n "入れ替え先(No): "
-      read -r n2
-      i1=$((n1 - 1))
-      i2=$((n2 - 1))
-      if [[ $i1 -ge 0 && $i1 -lt ${#titles[@]} && $i2 -ge 0 && $i2 -lt ${#titles[@]} ]]; then
-        tmp_t="${titles[$i1]}"
-        titles[$i1]="${titles[$i2]}"
-        titles[$i2]="$tmp_t"
-
-        tmp_p="${targets[$i1]}"
-        targets[$i1]="${targets[$i2]}"
-        targets[$i2]="$tmp_p"
-        save_config
-      fi
-      ;;
-
-    d)
-      echo -n "削除する番号を選択: "
-      read -r num
-      idx=$((num - 1))
-      if [[ $idx -ge 0 && $idx -lt ${#titles[@]} ]]; then
-        unset 'titles[idx]'
-        unset 'targets[idx]'
-        save_config
-        echo "削除しました。"
-        sleep 1
-      fi
-      ;;
-
-    q)
-      echo "終了します。"
-      exit 0
-      ;;
+  q)
+    echo "終了します。"
+    exit 0
+    ;;
   esac
 done
